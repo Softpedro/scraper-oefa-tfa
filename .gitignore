@@ -1,0 +1,23 @@
+# Dependencias
+node_modules/
+
+# Build de TypeScript
+dist/
+
+# Salidas del scraper (datos y PDFs descargados no van al repo)
+output/
+pdfs/
+
+# Variables de entorno
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# Sistema operativo / editores
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
