@@ -24,3 +24,9 @@ export const REQUEST_TIMEOUT_MS = Number(process.env.REQUEST_TIMEOUT_MS ?? 30_00
 
 /** Delay base entre peticiones para no saturar el servidor (ms). */
 export const REQUEST_DELAY_MS = Number(process.env.REQUEST_DELAY_MS ?? 1_000);
+
+/** Carpeta donde se guardan los datos extraídos y el checkpoint. */
+export const OUTPUT_DIR = process.env.OUTPUT_DIR ?? "output";
+
+/** Carpeta donde se guardan los PDFs descargados. */
+export const PDF_DIR = process.env.PDF_DIR ?? "pdfs";

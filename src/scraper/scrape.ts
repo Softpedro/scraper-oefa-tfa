@@ -16,16 +16,22 @@ const ROWS_PER_PAGE = 10;
 export interface ScrapeOptions {
   /** Filtros de búsqueda. Por defecto sector "" (Todos). */
   params?: SearchParams;
+  /** Página desde la que arrancar (para reanudar). Por defecto 1. */
+  startPage?: number;
   /** Límite de páginas a recorrer (para pruebas). `undefined` = todas. */
   maxPages?: number;
-  /** Callback por cada página procesada (para logging/progreso). */
+  /**
+   * Callback por cada página procesada (para guardar/loguear). Puede ser
+   * asíncrono: el recorrido espera a que termine antes de seguir, de modo que
+   * la persistencia ocurre página a página.
+   */
   onPage?: (info: {
     page: number;
     totalPages: number;
     totalRecords: number;
     pageDocs: Documento[];
     accumulated: number;
-  }) => void;
+  }) => void | Promise<void>;
 }
 
 /**
@@ -38,18 +44,19 @@ export async function scrapeAllDocuments(
   initialViewState: string,
   options: ScrapeOptions = {}
 ): Promise<Documento[]> {
-  const { params = {}, maxPages, onPage } = options;
+  const { params = {}, startPage = 1, maxPages, onPage } = options;
 
-  // Página 1: se obtiene mediante la búsqueda.
+  // La búsqueda siempre se ejecuta: deja el datatable en un estado válido y nos
+  // da el ViewState + el total de páginas (aunque vayamos a reanudar más adelante).
   const first = await search(http, initialViewState, params);
   let viewState = first.viewState;
   const pagination = parsePagination(first.tableHtml);
 
   const documentos: Documento[] = [];
-  const pushPage = (page: number, tableHtml: string) => {
+  const handlePage = async (page: number, tableHtml: string) => {
     const pageDocs = parseResults(tableHtml);
     documentos.push(...pageDocs);
-    onPage?.({
+    await onPage?.({
       page,
       totalPages: pagination.totalPages,
       totalRecords: pagination.totalRecords,
@@ -58,14 +65,18 @@ export async function scrapeAllDocuments(
     });
   };
 
-  pushPage(1, first.tableHtml);
+  // La página 1 solo se procesa si arrancamos desde ella (al reanudar se salta).
+  if (startPage <= 1) {
+    await handlePage(1, first.tableHtml);
+  }
 
   const lastPage = maxPages
     ? Math.min(maxPages, pagination.totalPages)
     : pagination.totalPages;
 
-  // Páginas 2..N: vía el evento de paginación del datatable.
-  for (let page = 2; page <= lastPage; page++) {
+  // Páginas 2..N (o desde startPage): el evento de paginación acepta un offset
+  // absoluto, así que se puede saltar directo a la página de reanudación.
+  for (let page = Math.max(2, startPage); page <= lastPage; page++) {
     await sleep(REQUEST_DELAY_MS); // delay para no saturar el servidor
     const result = await fetchPage(http, viewState, {
       first: (page - 1) * ROWS_PER_PAGE,
@@ -73,7 +84,7 @@ export async function scrapeAllDocuments(
       params,
     });
     viewState = result.viewState; // actualizar para la siguiente iteración
-    pushPage(page, result.tableHtml);
+    await handlePage(page, result.tableHtml);
   }
 
   return documentos;
