@@ -46,29 +46,45 @@ Descarga del PDF de cada fila  ──►  manejar 429 (backoff exponencial)
 | `listarDetalleInfraccionRAAForm:dt` | datatable | tabla de resultados |
 | `listarDetalleInfraccionRAAForm:dt_paginator_bottom` | — | paginador |
 
-## 3. POST de búsqueda  ⬅️ PENDIENTE (pegar cURL real)
+## 3. POST de búsqueda  ✅
 
-> Hacer una búsqueda en el navegador, clic en la petición POST en Network → "Copy as cURL".
+El botón "Buscar" dispara `PrimeFaces.ab({s:"...:btnBuscar", u:"...:pgLista ...:txtNroexp"})`,
+que se traduce en este POST `application/x-www-form-urlencoded`.
 
-```bash
-# TODO: pegar aquí el "Copy as cURL" del POST de búsqueda
-```
-
-**Parámetros del payload (anotar todos):**
+**URL** (con jsessionid en el path la primera vez; luego va por cookie):
 
 ```
-javax.faces.partial.ajax: true
-javax.faces.source: listarDetalleInfraccionRAAForm:btnBuscar
-javax.faces.partial.execute: ...
-javax.faces.partial.render: ...
-listarDetalleInfraccionRAAForm: listarDetalleInfraccionRAAForm
-listarDetalleInfraccionRAAForm:txtNroexp: ...
-listarDetalleInfraccionRAAForm:idsector: ...
-javax.faces.ViewState: ...
+POST https://publico.oefa.gob.pe/repdig/consulta/consultaTfa.xhtml;jsessionid=C8FB9054ECBB63687CDE960641D66764
 ```
 
-**Formato de la respuesta:** `<partial-response>` (XML). La tabla viene dentro de un
-`<update>` envuelto en `<![CDATA[ ... ]]>`, y el ViewState nuevo en otro `<update>`.
+**Parámetros del payload:**
+
+```
+javax.faces.partial.ajax=true
+javax.faces.source=listarDetalleInfraccionRAAForm:btnBuscar
+javax.faces.partial.execute=@all
+javax.faces.partial.render=listarDetalleInfraccionRAAForm:pgLista listarDetalleInfraccionRAAForm:txtNroexp
+listarDetalleInfraccionRAAForm:btnBuscar=listarDetalleInfraccionRAAForm:btnBuscar
+listarDetalleInfraccionRAAForm=listarDetalleInfraccionRAAForm
+listarDetalleInfraccionRAAForm:txtNroexp=        # texto del N° de expediente (vacío = sin filtro)
+listarDetalleInfraccionRAAForm:idsector=         # sector (vacío = Todos)
+listarDetalleInfraccionRAAForm:dt_scrollState=0,0
+javax.faces.ViewState=<viewstate del GET inicial>
+```
+
+**Valores del combo `idsector`:** `""`=Todos · `2`=Electricidad · `3`=Hidrocarburos ·
+`9`=Industria · `1`=Minería · `8`=Pesquería. Buscar con `""` trae **todos** los registros.
+
+**Formato de la respuesta:** `<partial-response>` (XML). La tabla viene en el
+`<update id="...:pgLista">` dentro de un `<![CDATA[ ... ]]>`, y el ViewState nuevo en el
+`<update id="j_id1:javax.faces.ViewState:0">`. **Hay que reusar ese ViewState** en la
+siguiente petición.
+
+![Respuesta partial-response (XML) con la tabla en CDATA y el ViewState nuevo](img/post-response.png)
+
+> 🔍 El POST real entre el ruido de beacons de tracking (es el `consultaTfa.xhtml` de tipo `xhr`):
+>
+> ![Ubicando el POST en Network](img/network-list.png)
 
 ## 4. POST de paginación  ⬅️ PENDIENTE (pegar cURL real)
 
@@ -78,18 +94,29 @@ javax.faces.ViewState: ...
 # TODO: pegar aquí el cURL del POST de paginación
 ```
 
-- ¿Parámetro que controla la página? (ej. `..._first`, `..._rows`) → __________
-- Total de resultados / páginas observados: __________
+- ¿Parámetro que controla la página? (ej. `..._first`, `..._rows`) → __________ (por capturar)
+- Total de resultados / páginas observados: **Todos = 1753 registros / 176 páginas**
+  (10 por página). Con sector Electricidad = 125 registros / 13 páginas.
+- El widget PrimeFaces declara: `paginator:{rows:10, rowCount:1753, page:0}`.
 
-## 5. Descarga del PDF  ⬅️ PENDIENTE (pegar cURL real)
+## 5. Descarga del PDF  🟡 parcial
 
-> Clic en el enlace de descarga de una fila. Capturar la petición.
+Cada fila con archivo tiene un enlace con el UUID del documento dentro del onclick de mojarra:
 
-```bash
-# TODO: pegar aquí el cURL de la descarga del PDF
+```html
+<a onclick="mojarra.jsfcljs(document.getElementById('listarDetalleInfraccionRAAForm'),
+   {'listarDetalleInfraccionRAAForm:dt:0:j_idt63':'...',
+    'param_uuid':'4c6b30c2-9dd8-4b61-a592-9b0ef82d83ab'},'')">
 ```
 
-- Método: `GET` / `POST` → __________
+→ La llave del PDF es **`param_uuid`**. Las filas que dicen "Información confidencial" no
+tienen enlace (no hay PDF). Es un submit **no-AJAX** del formulario (devuelve el binario).
+
+```bash
+# TODO: pegar el cURL real de la descarga (clic en el ícono PDF de una fila)
+```
+
+- Método: `GET` / `POST` → __________ (por confirmar al capturar)
 - ¿URL directa o requiere ViewState/sesión? → __________
 - `Content-Type` de la respuesta: __________
 - `Content-Disposition` (nombre de archivo): __________
@@ -104,4 +131,12 @@ javax.faces.ViewState: ...
 
 ## Capturas
 
-> Pegar aquí 2-3 capturas de DevTools (payload del POST, respuesta partial-response, el 429).
+**Pantalla de resultados del sitio** (búsqueda por sector Electricidad, 125 registros,
+13 páginas). Se ven las columnas que extraemos y el ícono de descarga del PDF:
+
+![Resultados en el sitio OEFA](img/resultados.png)
+
+**Respuesta `partial-response`** y **ubicación del POST en Network**: ver sección 3.
+
+> Pendientes de capturar: el **payload** del POST (lo que se envía), el cURL de la
+> **descarga del PDF**, y un **429** si se reproduce al descargar varios PDFs seguidos.
