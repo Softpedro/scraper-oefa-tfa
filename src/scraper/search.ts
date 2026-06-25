@@ -8,8 +8,7 @@
  */
 import { AxiosInstance } from "axios";
 
-import { SEARCH_PAGE_URL } from "../config";
-import { parsePartialResponse } from "../http/partialResponse";
+import { postPartial } from "../http/ajax";
 
 /** Prefijo del formulario JSF; todos los campos lo usan como namespace. */
 export const FORM_ID = "listarDetalleInfraccionRAAForm";
@@ -38,7 +37,7 @@ export async function search(
   viewState: string,
   params: SearchParams = {}
 ): Promise<SearchResult> {
-  const body = new URLSearchParams({
+  const partial = await postPartial(http, {
     "javax.faces.partial.ajax": "true",
     "javax.faces.source": `${FORM_ID}:btnBuscar`,
     "javax.faces.partial.execute": "@all",
@@ -51,16 +50,6 @@ export async function search(
     "javax.faces.ViewState": viewState,
   });
 
-  const res = await http.post<string>(SEARCH_PAGE_URL, body.toString(), {
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
-      // Cabeceras que PrimeFaces envía en sus peticiones AJAX:
-      "Faces-Request": "partial/ajax",
-      "X-Requested-With": "XMLHttpRequest",
-    },
-  });
-
-  const partial = parsePartialResponse(res.data);
   const tableHtml = partial.updates.get(PGLISTA_ID);
 
   if (!tableHtml) {

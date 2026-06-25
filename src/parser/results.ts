@@ -20,11 +20,13 @@ const PAGINATION_REGEX = /Página\s+(\d+)\s+de\s+(\d+)\s+\((\d+)/;
  * Extrae los documentos de una página de resultados.
  */
 export function parseResults(tableHtml: string): Documento[] {
-  const $ = cheerio.load(tableHtml);
+  const $ = loadRows(tableHtml);
   const docs: Documento[] = [];
 
-  // El cuerpo de la tabla tiene id terminado en "dt_data".
-  $("tbody[id$='dt_data'] > tr").each((_, tr) => {
+  // Cada fila de datos tiene el atributo `data-ri` (row index). Esto funciona
+  // tanto para la tabla completa (búsqueda) como para el fragmento de filas
+  // sueltas que devuelve la paginación.
+  $("tr[data-ri]").each((_, tr) => {
     const $tr = $(tr);
     const cells = $tr.children("td");
 
@@ -66,8 +68,22 @@ export function parsePagination(tableHtml: string): PaginationInfo {
   };
 }
 
+/**
+ * Carga el HTML para parsear filas. La paginación devuelve `<tr>` sueltos (sin
+ * `<table>`), que el parser HTML descartaría; por eso los envolvemos en una
+ * tabla. La búsqueda ya trae la tabla completa, así que se carga tal cual.
+ */
+function loadRows(html: string): CheerioAPI {
+  const wrapped = /<table[\s>]/i.test(html)
+    ? html
+    : `<table><tbody>${html}</tbody></table>`;
+  return cheerio.load(wrapped);
+}
+
 function cellText($: CheerioAPI, cell: Cheerio<Element>): string {
-  return $(cell).text().trim();
+  // Colapsa espacios/saltos de línea internos (algunas celdas traen varios
+  // expedientes separados por saltos) para dejar el texto en una sola línea.
+  return $(cell).text().replace(/\s+/g, " ").trim();
 }
 
 function extractUuid(onclick: string | undefined): string | null {

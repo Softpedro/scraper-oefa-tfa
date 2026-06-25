@@ -1,51 +1,55 @@
 /**
  * Punto de entrada del scraper.
  *
- * Fase actual: búsqueda y extracción de la primera página de resultados.
- * Flujo: GET inicial (sesión + ViewState) → POST de búsqueda → parseo del
- * `<partial-response>` → documentos de la página 1.
+ * Fase actual: navegación completa por paginación. Flujo: GET inicial → búsqueda
+ * → recorrido de páginas (search para la 1, evento `page` para el resto),
+ * acumulando los documentos de cada página.
+ *
+ * Para no saturar el servidor durante las pruebas, se limita el número de
+ * páginas con la variable de entorno MAX_PAGES (por defecto 3). Usar
+ * MAX_PAGES=0 para recorrer TODAS las páginas.
  */
 import { createHttpClient } from "./http/client";
 import { extractViewStateFromHtml } from "./http/viewState";
-import { search } from "./scraper/search";
-import { parseResults, parsePagination } from "./parser/results";
+import { scrapeAllDocuments } from "./scraper/scrape";
 import { SEARCH_PAGE_URL } from "./config";
+
+/** 0 = todas las páginas; cualquier otro número limita el recorrido (pruebas). */
+const MAX_PAGES = Number(process.env.MAX_PAGES ?? 3);
 
 async function main(): Promise<void> {
   const { http, jar } = createHttpClient();
 
-  // 1) GET inicial: establece la sesión y obtiene el ViewState.
+  // 1) GET inicial: sesión + ViewState.
   console.log(`→ GET ${SEARCH_PAGE_URL}`);
   const res = await http.get<string>(SEARCH_PAGE_URL);
   const cookies = await jar.getCookies(SEARCH_PAGE_URL);
   const jsession = cookies.find((c) => c.key === "JSESSIONID");
   console.log(`  status ${res.status} · ${jsession ? "JSESSIONID OK" : "⚠️  sin sesión"}`);
 
-  let viewState = extractViewStateFromHtml(res.data);
+  const viewState = extractViewStateFromHtml(res.data);
 
-  // 2) POST de búsqueda. Sector "" = Todos → trae todos los registros.
-  console.log("→ POST búsqueda (sector: Todos)");
-  const result = await search(http, viewState, { sector: "" });
-  viewState = result.viewState; // ← clave: actualizar el ViewState para el siguiente POST
-
-  // 3) Parsear resultados y paginación.
-  const docs = parseResults(result.tableHtml);
-  const pag = parsePagination(result.tableHtml);
-
+  // 2) Recorrer páginas (sector "" = Todos).
   console.log(
-    `  ${pag.totalRecords} registros · ${pag.totalPages} páginas · ` +
-      `${docs.length} documentos en esta página`
+    `→ Recorriendo páginas (límite: ${MAX_PAGES === 0 ? "todas" : MAX_PAGES})\n`
   );
-  console.log(`  ViewState actualizado (${viewState.length} chars)\n`);
 
-  // Muestra de los primeros resultados.
-  console.log("Primeros resultados:");
-  for (const d of docs.slice(0, 5)) {
-    const pdf = d.pdfUuid ? `pdf=${d.pdfUuid}` : "sin PDF";
-    console.log(`  ${d.nro.padStart(2)} · ${d.expediente} · ${d.administrado} · ${pdf}`);
-  }
+  const docs = await scrapeAllDocuments(http, viewState, {
+    params: { sector: "" },
+    maxPages: MAX_PAGES === 0 ? undefined : MAX_PAGES,
+    onPage: ({ page, totalPages, totalRecords, pageDocs, accumulated }) => {
+      const conPdf = pageDocs.filter((d) => d.pdfUuid).length;
+      console.log(
+        `  página ${String(page).padStart(3)}/${totalPages} · ` +
+          `+${pageDocs.length} docs (${conPdf} con PDF) · ` +
+          `acumulado ${accumulated}/${totalRecords}`
+      );
+    },
+  });
 
-  console.log("\n✓ Búsqueda y extracción de la primera página OK.");
+  const conPdf = docs.filter((d) => d.pdfUuid).length;
+  console.log(`\n✓ ${docs.length} documentos extraídos (${conPdf} con PDF).`);
+  console.log("Ejemplo:", JSON.stringify(docs[docs.length - 1], null, 2));
 }
 
 main().catch((err) => {
