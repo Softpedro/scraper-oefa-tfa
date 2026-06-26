@@ -46,8 +46,46 @@ const MAX_PAGES = Number(process.env.MAX_PAGES ?? 3);
 const SECTOR = process.env.SECTOR ?? ""; // "" = Todos
 const DOWNLOAD_PDFS = process.env.DOWNLOAD_PDFS !== "0";
 const RETRY_FAILED = process.argv.includes("--retry-failed");
+const SHOW_HELP =
+  process.argv.includes("--help") || process.argv.includes("-h");
+
+const HELP = `
+Scraper OEFA / TFA — Registro de Infracciones y Sanciones del Tribunal de
+Fiscalización Ambiental. Recorre todas las páginas, extrae los datos y descarga
+los PDFs (manejando 429 con backoff exponencial).
+
+Uso:
+  npm run scrape              recorre páginas y descarga PDFs
+  npm run retry               reintenta solo las descargas de output/failed.json
+  npm test                    corre los tests unitarios
+  npm run scrape -- --help    muestra esta ayuda
+
+Variables de entorno:
+  MAX_PAGES=0                 recorrer TODAS las páginas (default 3, para pruebas)
+  SECTOR=2                    filtrar por sector; "" = todos (default). Ej: 2 = Electricidad
+  DOWNLOAD_PDFS=0             no descargar PDFs (solo extraer datos)
+  REQUEST_DELAY_MS=1000       espera entre peticiones (ms)
+  RETRY_MAX=5                 reintentos ante 429 / 5xx / errores de red
+  OUTPUT_DIR=output           carpeta de datos y checkpoint
+  PDF_DIR=pdfs                carpeta de PDFs descargados
+
+Salida:
+  output/data.json            documentos extraídos (acumulado, deduplicado)
+  output/checkpoint.json      última página completada (reanudable)
+  output/failed.json          descargas fallidas (reintentar con: npm run retry)
+  pdfs/                        PDFs con su nombre real (Content-Disposition)
+
+Ejemplos:
+  MAX_PAGES=0 npm run scrape
+  SECTOR=2 MAX_PAGES=5 DOWNLOAD_PDFS=0 npm run scrape
+`;
 
 async function main(): Promise<void> {
+  if (SHOW_HELP) {
+    console.log(HELP.trim());
+    return;
+  }
+
   const store = new DocumentStore();
   store.load();
 
