@@ -99,35 +99,65 @@ siguiente petición.
   (10 por página). Con sector Electricidad = 125 registros / 13 páginas.
 - El widget PrimeFaces declara: `paginator:{rows:10, rowCount:1753, page:0}`.
 
-## 5. Descarga del PDF  🟡 parcial
+## 5. Descarga del PDF  ✅
 
 Cada fila con archivo tiene un enlace con el UUID del documento dentro del onclick de mojarra:
 
 ```html
 <a onclick="mojarra.jsfcljs(document.getElementById('listarDetalleInfraccionRAAForm'),
-   {'listarDetalleInfraccionRAAForm:dt:0:j_idt63':'...',
+   {'listarDetalleInfraccionRAAForm:dt:0:j_idt63':'listarDetalleInfraccionRAAForm:dt:0:j_idt63',
     'param_uuid':'4c6b30c2-9dd8-4b61-a592-9b0ef82d83ab'},'')">
 ```
 
 → La llave del PDF es **`param_uuid`**. Las filas que dicen "Información confidencial" no
-tienen enlace (no hay PDF). Es un submit **no-AJAX** del formulario (devuelve el binario).
+tienen enlace (no hay PDF).
 
-```bash
-# TODO: pegar el cURL real de la descarga (clic en el ícono PDF de una fila)
+Al hacer clic, mojarra arma un **form oculto y lo envía** (no es AJAX): aparece en Network
+como una petición de tipo **`document`**, no XHR. El cuerpo es el mismo form de búsqueda más
+dos campos clave: el `source` del link (`...:dt:0:j_idt63`) y `param_uuid`.
+
+Payload real (`application/x-www-form-urlencoded`):
+
+```
+listarDetalleInfraccionRAAForm=listarDetalleInfraccionRAAForm
+listarDetalleInfraccionRAAForm:txtNroexp=
+listarDetalleInfraccionRAAForm:idsector=2
+listarDetalleInfraccionRAAForm:dt_scrollState=0,0
+javax.faces.ViewState=mnhgosk8SAaV…            (el ViewState de la página actual)
+listarDetalleInfraccionRAAForm:dt:0:j_idt63=listarDetalleInfraccionRAAForm:dt:0:j_idt63
+param_uuid=4c6b30c2-9dd8-4b61-a592-9b0ef82d83ab
 ```
 
-- Método: `GET` / `POST` → __________ (por confirmar al capturar)
-- ¿URL directa o requiere ViewState/sesión? → __________
-- `Content-Type` de la respuesta: __________
-- `Content-Disposition` (nombre de archivo): __________
+- Método: **POST** a `…/consultaTfa.xhtml;jsessionid=…` (mismo endpoint, sesión en la URL).
+- Requiere **ViewState + sesión**: es un full postback. No devuelve ViewState nuevo (termina en
+  `responseComplete`), así que la descarga se hace con el ViewState de la página donde está la fila.
+- `Content-Type` de la respuesta: **`application/octet-stream`**.
+- `Content-Disposition`: **`attachment;filename="RESOLUCION N° 229-2020-OEFA-TFA-SE.pdf"`**
+  → el servidor nos da el **nombre real**; lo usamos tal cual (sanitizado) para guardar el archivo.
+
+El índice de la fila (`dt:0:…`) es el atributo `data-ri`, que es **absoluto**: en la página 2 las
+filas son `data-ri="10"`…`19`, así que el link es `dt:10:j_idt63`, etc.
+
+![cURL y headers de la descarga del PDF](img/pdf-descarga.png)
 
 ## 6. Rate limiting (429)
 
-> Descargar varios PDFs seguidos y observar si aparece status 429.
+El reto pide manejar el 429 (Too Many Requests). Estrategia implementada (ver
+`src/util/backoff.ts`), pensada para activarse aunque el sitio de desarrollo no siempre lo
+dispare:
 
-- ¿Se reproduce el 429? → __________
-- ¿Cada cuántas descargas aprox.? → __________
-- ¿La respuesta trae header `Retry-After`? → __________
+- Reintentos ante **429, 500, 502, 503, 504** y errores de red transitorios (timeout, conexión
+  cortada). El resto de errores no se reintenta.
+- **Backoff exponencial**: `base·2^(n-1)` con tope de 30 s y un 25 % de *jitter* para no
+  reintentar en bloque.
+- Si la respuesta trae **`Retry-After`** (segundos), se respeta ese tiempo en lugar del backoff.
+- Tras agotar los reintentos, el documento se anota en `output/failed.json` y se sigue con el
+  resto. `npm run retry` reprocesa solo esos.
+- Entre descargas hay un delay base (`REQUEST_DELAY_MS`, 1 s) para no saturar el servidor.
+
+- ¿Se reproduce el 429 en OEFA (desarrollo)? → No de forma fiable con el ritmo de 1 req/s; por eso
+  el manejo se prueba con la lógica de `withRetry` y queda listo para el sitio de producción.
+- ¿`Retry-After`? → Soportado si el servidor lo envía.
 
 ## Capturas
 
@@ -138,5 +168,8 @@ tienen enlace (no hay PDF). Es un submit **no-AJAX** del formulario (devuelve el
 
 **Respuesta `partial-response`** y **ubicación del POST en Network**: ver sección 3.
 
-> Pendientes de capturar: el **payload** del POST (lo que se envía), el cURL de la
-> **descarga del PDF**, y un **429** si se reproduce al descargar varios PDFs seguidos.
+**Descarga del PDF** (cURL + headers `application/octet-stream` y `Content-Disposition`): ver
+sección 5, captura `img/pdf-descarga.png`.
+
+> Pendiente de capturar: un **429** si se llega a reproducir al descargar muchos PDFs seguidos
+> (en OEFA no se dispara de forma fiable con el ritmo actual).

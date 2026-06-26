@@ -30,3 +30,12 @@ export const OUTPUT_DIR = process.env.OUTPUT_DIR ?? "output";
 
 /** Carpeta donde se guardan los PDFs descargados. */
 export const PDF_DIR = process.env.PDF_DIR ?? "pdfs";
+
+/** Máximo de reintentos ante 429 / errores transitorios. */
+export const RETRY_MAX = Number(process.env.RETRY_MAX ?? 5);
+
+/** Delay base del backoff exponencial (ms). El delay crece base·2^n. */
+export const RETRY_BASE_DELAY_MS = Number(process.env.RETRY_BASE_DELAY_MS ?? 1_000);
+
+/** Tope del backoff exponencial (ms) para no esperar indefinidamente. */
+export const RETRY_MAX_DELAY_MS = Number(process.env.RETRY_MAX_DELAY_MS ?? 30_000);

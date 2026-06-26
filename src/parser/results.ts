@@ -9,9 +9,13 @@ import type { Element } from "domhandler";
 import { Documento, PaginationInfo } from "./types";
 
 /** El enlace de descarga lleva el UUID dentro de un onclick de mojarra:
- *    ...{'...:j_idt63':'...','param_uuid':'4c6b30c2-9dd8-4b61-...'},'')...
+ *    mojarra.jsfcljs(form,{'...:dt:0:j_idt63':'...:dt:0:j_idt63',
+ *                          'param_uuid':'4c6b30c2-9dd8-4b61-...'},'')
  */
 const UUID_REGEX = /'param_uuid'\s*:\s*'([0-9a-fA-F-]+)'/;
+
+/** El primer key del objeto de mojarra es el client-id del link (el `source`). */
+const SOURCE_ID_REGEX = /\{\s*'([^']+)'\s*:/;
 
 /** Texto de la paginación: "Página 1 de 13 (125 registros)". */
 const PAGINATION_REGEX = /Página\s+(\d+)\s+de\s+(\d+)\s+\((\d+)/;
@@ -33,6 +37,9 @@ export function parseResults(tableHtml: string): Documento[] {
     // Filas válidas tienen 7 columnas. Mensajes ("sin resultados") tienen menos.
     if (cells.length < 7) return;
 
+    const onclick = cells.eq(6).find("a[onclick]").attr("onclick");
+    const { uuid, sourceId } = parseDownloadLink(onclick);
+
     docs.push({
       nro: cellText($, cells.eq(0)),
       expediente: cellText($, cells.eq(1)),
@@ -40,7 +47,10 @@ export function parseResults(tableHtml: string): Documento[] {
       unidadFiscalizable: cellText($, cells.eq(3)),
       sector: cellText($, cells.eq(4)),
       nroResolucion: cellText($, cells.eq(5)),
-      pdfUuid: extractUuid(cells.eq(6).find("a[onclick]").attr("onclick")),
+      pdfUuid: uuid,
+      // El source solo tiene sentido si hay UUID (fila con archivo).
+      pdfSourceId: uuid ? sourceId : null,
+      pdfFile: null,
       rowIndex: Number($tr.attr("data-ri") ?? -1),
     });
   });
@@ -86,8 +96,16 @@ function cellText($: CheerioAPI, cell: Cheerio<Element>): string {
   return $(cell).text().replace(/\s+/g, " ").trim();
 }
 
-function extractUuid(onclick: string | undefined): string | null {
-  if (!onclick) return null;
-  const match = onclick.match(UUID_REGEX);
-  return match ? match[1] : null;
+/**
+ * Extrae del `onclick` de mojarra el UUID del PDF y el client-id del link.
+ * Devuelve ambos en `null` si la fila no tiene enlace de descarga.
+ */
+function parseDownloadLink(onclick: string | undefined): {
+  uuid: string | null;
+  sourceId: string | null;
+} {
+  if (!onclick) return { uuid: null, sourceId: null };
+  const uuid = onclick.match(UUID_REGEX)?.[1] ?? null;
+  const sourceId = onclick.match(SOURCE_ID_REGEX)?.[1] ?? null;
+  return { uuid, sourceId };
 }

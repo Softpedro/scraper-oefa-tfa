@@ -31,6 +31,8 @@ export interface ScrapeOptions {
     totalRecords: number;
     pageDocs: Documento[];
     accumulated: number;
+    /** ViewState vigente tras renderizar esta página (necesario para descargar). */
+    viewState: string;
   }) => void | Promise<void>;
 }
 
@@ -53,7 +55,11 @@ export async function scrapeAllDocuments(
   const pagination = parsePagination(first.tableHtml);
 
   const documentos: Documento[] = [];
-  const handlePage = async (page: number, tableHtml: string) => {
+  const handlePage = async (
+    page: number,
+    tableHtml: string,
+    pageViewState: string
+  ) => {
     const pageDocs = parseResults(tableHtml);
     documentos.push(...pageDocs);
     await onPage?.({
@@ -62,12 +68,13 @@ export async function scrapeAllDocuments(
       totalRecords: pagination.totalRecords,
       pageDocs,
       accumulated: documentos.length,
+      viewState: pageViewState,
     });
   };
 
   // La página 1 solo se procesa si arrancamos desde ella (al reanudar se salta).
   if (startPage <= 1) {
-    await handlePage(1, first.tableHtml);
+    await handlePage(1, first.tableHtml, viewState);
   }
 
   const lastPage = maxPages
@@ -84,7 +91,7 @@ export async function scrapeAllDocuments(
       params,
     });
     viewState = result.viewState; // actualizar para la siguiente iteración
-    await handlePage(page, result.tableHtml);
+    await handlePage(page, result.tableHtml, viewState);
   }
 
   return documentos;

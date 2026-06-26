@@ -35,7 +35,15 @@ export class DocumentStore {
 
   /** Agrega/actualiza documentos en el índice en memoria. */
   add(docs: Documento[]): void {
-    for (const d of docs) this.docs.set(keyOf(d), d);
+    for (const d of docs) {
+      const key = keyOf(d);
+      // Si ya teníamos el PDF descargado y el doc nuevo aún no lo refleja,
+      // conservamos el nombre del archivo para no perder el progreso de descarga
+      // al re-procesar una página.
+      const prev = this.docs.get(key);
+      if (prev?.pdfFile && !d.pdfFile) d.pdfFile = prev.pdfFile;
+      this.docs.set(key, d);
+    }
   }
 
   /** Escribe el archivo data.json con todo lo acumulado. */
