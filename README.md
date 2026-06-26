@@ -49,6 +49,9 @@ npm run retry
 # Compilar a JavaScript (dist/) y ejecutar el build
 npm run build
 npm start
+
+# Tests unitarios
+npm test
 ```
 
 ### Configuración por variables de entorno
@@ -148,6 +151,23 @@ src/
     backoff.ts             Reintentos con backoff exponencial
     sleep.ts               Delay entre peticiones
 ```
+
+## Tests
+
+Tests unitarios con el **runner nativo de Node** (`node:test` + `node:assert`), sin dependencias
+extra. Cubren la lógica determinista (parseo y reintentos), que es lo que más se puede romper al
+tocar el código sin necesidad de pegarle al servidor:
+
+```bash
+npm test
+```
+
+- `parser/results` — filas, extracción de `param_uuid` y del `source` del link, filas
+  "Información confidencial" (sin PDF), fragmentos sueltos de paginación y el paginador.
+- `http/partialResponse` — updates por id + ViewState nuevo; error si la sesión cae.
+- `http/viewState` — extracción del token del HTML inicial.
+- `util/backoff` — reintenta ante 429/5xx/red, se rinde ante errores no recuperables y respeta
+  el máximo de reintentos.
 
 ## Decisiones técnicas
 
